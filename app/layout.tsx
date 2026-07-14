@@ -2,17 +2,17 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_ORIGIN ?? "http://localhost:3000"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_ORIGIN ?? "https://bangchak-hospital.github.io/drug"),
   title: "ค้นให้เจอ ก่อนเลือกใช้ | คลังยา รพ.บางจาก",
-  description: "Digital formulary สำหรับค้นหากรอบบัญชียา โรงพยาบาลบางจาก ปี 2569",
+  description: "คลังยาโรงพยาบาลบางจาก พร้อมบัญชียาหลักแห่งชาติด้านสมุนไพรและข้อมูลประกอบการใช้ยา",
   openGraph: {
     title: "ค้นให้เจอ ก่อนเลือกใช้ | คลังยา รพ.บางจาก",
-    description: "Digital formulary ปี 2569 รวม 708 รายการ 12 กลุ่มยา",
+    description: "ค้นยา 708 รายการ และยาสมุนไพรที่โรงพยาบาลมี 35 รายการ",
     type: "website",
     locale: "th_TH",
-    images: [{ url: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/og-editorial.png`, width: 1672, height: 941, alt: "ค้นให้เจอ ก่อนเลือกใช้ - คลังยา โรงพยาบาลบางจาก" }],
+    images: [{ url: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/og-herbal.png`, width: 1730, height: 909, alt: "บัญชียาหลักแห่งชาติด้านสมุนไพร - คลังยา โรงพยาบาลบางจาก" }],
   },
-  twitter: { card: "summary_large_image", images: [`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/og-editorial.png`] },
+  twitter: { card: "summary_large_image", images: [`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/og-herbal.png`] },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

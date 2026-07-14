@@ -13,11 +13,29 @@ test("exports a complete static drug dashboard", async () => {
   assert.match(html, /คลังยา รพ\.บางจาก/);
   assert.match(html, /ค้นให้เจอ/);
   assert.match(html, /ก่อนเลือกใช้/);
+  assert.match(html, /บัญชียาหลักแห่งชาติด้านสมุนไพร/);
   assert.equal(payload.meta.sourceCount, 12);
   assert.equal(payload.meta.rawRowCount, 904);
   assert.equal(payload.meta.recordCount, 708);
   assert.equal(payload.meta.groups.length, 12);
   assert.equal(payload.drugs.length, 708);
+});
+
+test("maps every hospital herbal medicine to Herb_2566 knowledge", async () => {
+  const [payload, herbalSource] = await Promise.all([
+    readFile(new URL("public/data/drugs.json", root), "utf8").then(JSON.parse),
+    readFile(new URL("app/herbal-data.ts", root), "utf8"),
+  ]);
+  const herbalDrugs = payload.drugs.filter((drug) => drug.groups.includes("ยาสมุนไพร"));
+  const mappedIds = [...herbalSource.matchAll(/profile\("(BCH-\d+)"/g)].map((match) => match[1]);
+
+  assert.equal(herbalDrugs.length, 35);
+  assert.equal(mappedIds.length, 35);
+  assert.equal(new Set(mappedIds).size, 35);
+  assert.deepEqual(new Set(mappedIds), new Set(herbalDrugs.map((drug) => drug.id)));
+  assert.match(herbalSource, /BCH-0672[\s\S]*ยาขมิ้นชัน[\s\S]*500 มิลลิกรัม–1 กรัม/);
+  assert.match(herbalSource, /BCH-0700[\s\S]*andrographolide รวม 60–120 มิลลิกรัมต่อวัน/);
+  assert.match(herbalSource, /BCH-0677[\s\S]*รูปแบบการใช้ไม่ตรงกัน[\s\S]*review/);
 });
 
 test("keeps records searchable and traceable to source PDFs", async () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { HERBAL_SOURCE, herbalProfiles } from "./herbal-data";
 
 type Drug = {
   id: string; name: string; dosageForm: string; strength: string; account: string;
@@ -64,6 +65,7 @@ const evidenceLabel = (drug: Drug) => {
   return "ข้อมูลกรอบยาโรงพยาบาลเท่านั้น";
 };
 const evidenceCode = (drug: Drug) => drug.lastReviewed ? "VERIFIED" : drug.officialLabel ? "OFFICIAL LABEL" : drug.thaiNdi ? "THAI NDI" : drug.evidenceStatus === "thai-herbal-source-pending-review" ? "THAI HERBAL" : "FORMULARY";
+const herbalProfileById = new Map(herbalProfiles.map((item) => [item.hospitalDrugId, item]));
 
 export default function Home() {
   const [data, setData] = useState<DrugData | null>(null);
@@ -73,6 +75,7 @@ export default function Home() {
   const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
   const [visibleCount, setVisibleCount] = useState(14);
   const [loadError, setLoadError] = useState(false);
+  const [activeView, setActiveView] = useState<"formulary" | "herbal">("formulary");
 
   useEffect(() => {
     fetch("./data/drugs.json")
@@ -123,6 +126,23 @@ export default function Home() {
     });
   }, [drugs, query, selectedGroup, selectedFilter]);
 
+  const herbalItems = useMemo(() => {
+    const keyword = query.trim().toLocaleLowerCase("th");
+    const drugById = new Map(drugs.map((drug) => [drug.id, drug]));
+    return herbalProfiles
+      .map((profile) => ({ profile, drug: drugById.get(profile.hospitalDrugId) }))
+      .filter((item): item is typeof item & { drug: Drug } => Boolean(item.drug))
+      .filter(({ profile, drug }) => !keyword || [
+        drug.name,
+        profile.matchedTitle,
+        profile.officialForms,
+        profile.accountCategory,
+        profile.indication,
+        profile.dosage,
+        profile.safety.join(" "),
+      ].join(" ").toLocaleLowerCase("th").includes(keyword));
+  }, [drugs, query]);
+
   const resetPage = () => setVisibleCount(14);
   const chooseGroup = (group: string) => { setSelectedGroup(group); resetPage(); };
   const nedCount = drugs.filter((drug) => drug.groups.includes("ยานอกบัญชียาหลัก (NED)")).length;
@@ -134,29 +154,44 @@ export default function Home() {
   const sourceBackedCount = drugs.filter((drug) => drug.officialLabel || drug.thaiNdi || drug.evidenceStatus === "thai-herbal-source-pending-review").length;
   const chartGroups = groups.filter((group) => group.name !== "กรอบยาโรงพยาบาล").slice(0, 6);
   const chartMax = Math.max(...chartGroups.map((group) => group.count), 1);
+  const selectedHerbalProfile = selectedDrug ? herbalProfileById.get(selectedDrug.id) ?? null : null;
+  const herbalReviewCount = herbalProfiles.filter((item) => item.matchStatus === "review").length;
+  const herbalSpecificCount = herbalProfiles.filter((item) => item.accountCategory === "บัญชีรายการยาเฉพาะ").length;
+  const changeView = (view: "formulary" | "herbal") => {
+    setActiveView(view);
+    setQuery("");
+    setSelectedDrug(null);
+    setVisibleCount(14);
+  };
 
   return (
     <main className="site-shell">
       <header className="masthead" id="top">
         <a className="wordmark" href="#top" aria-label="กลับหน้าแรก"><span className="wordmark-capsule"><i /><i /></span><span><b>BCH</b><small>FORMULARY · 2569</small></span></a>
-        <nav aria-label="เมนูหลัก"><a href="#directory">บัญชียา</a><a href="#collections">กลุ่มยา</a><a href="#insights">ภาพรวม</a></nav>
+        <nav aria-label="เมนูหลัก">{activeView === "formulary" ? <><a href="#directory">บัญชียา</a><a href="#collections">กลุ่มยา</a><a href="#insights">ภาพรวม</a></> : <><a href="#herbal-directory">รายการสมุนไพร</a><a href="#herbal-source">แหล่งข้อมูล</a></>}</nav>
         <div className="edition"><span />ข้อมูลจาก PDF {data?.meta.sourceCount ?? 12} ชุด</div>
       </header>
 
-      <section className="hero-section">
+      <div className="view-tabs" role="tablist" aria-label="เลือกชุดข้อมูล">
+        <button role="tab" aria-selected={activeView === "formulary"} className={activeView === "formulary" ? "active" : ""} onClick={() => changeView("formulary")}><span>01</span>บัญชียาโรงพยาบาล</button>
+        <button role="tab" aria-selected={activeView === "herbal"} className={activeView === "herbal" ? "active herbal-tab" : "herbal-tab"} onClick={() => changeView("herbal")}><span>02</span>บัญชียาหลักแห่งชาติด้านสมุนไพร</button>
+      </div>
+
+      <section className={`hero-section ${activeView === "herbal" ? "herbal-hero" : ""}`}>
         <div className="hero-grid" aria-hidden="true" />
         <div className="hero-copy">
-          <p className="kicker">BANGCHAK HOSPITAL · DRUG DIRECTORY</p>
-          <h1>ค้นให้เจอ<br /><em>ก่อนเลือกใช้</em></h1>
-          <p className="hero-lead">ฐานข้อมูลกรอบบัญชียาที่อ่านง่าย ค้นเร็ว และย้อนกลับไปตรวจเอกสารต้นฉบับได้ทุกครั้ง</p>
-          <label className="hero-search" htmlFor="drug-search"><span className="search-glyph">⌕</span><input id="drug-search" value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="พิมพ์ชื่อยา ความแรง หรือรูปแบบยา" autoComplete="off" />{query ? <button onClick={() => { setQuery(""); resetPage(); }} aria-label="ล้างคำค้น">×</button> : <kbd>⌘ K</kbd>}</label>
-          <div className="quick-links"><span>ค้นหายอดนิยม</span>{["Paracetamol", "Amoxicillin", "Metformin"].map((term) => <button key={term} onClick={() => { setQuery(term); resetPage(); }}>{term}</button>)}</div>
+          <p className="kicker">{activeView === "formulary" ? "BANGCHAK HOSPITAL · DRUG DIRECTORY" : "HERBAL ESSENTIAL MEDICINES · 2566"}</p>
+          <h1>{activeView === "formulary" ? <>ค้นให้เจอ<br /><em>ก่อนเลือกใช้</em></> : <>สมุนไพร<br /><em>ที่เรามี</em></>}</h1>
+          <p className="hero-lead">{activeView === "formulary" ? "ฐานข้อมูลกรอบบัญชียาที่อ่านง่าย ค้นเร็ว และย้อนกลับไปตรวจเอกสารต้นฉบับได้ทุกครั้ง" : "จับคู่ยาสมุนไพรของโรงพยาบาลกับบัญชียาหลักแห่งชาติด้านสมุนไพร พ.ศ. 2566 พร้อมข้อบ่งใช้ ขนาดใช้ และข้อควรระวังจากเอกสารต้นฉบับ"}</p>
+          <label className="hero-search" htmlFor="drug-search"><span className="search-glyph">⌕</span><input id="drug-search" value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder={activeView === "formulary" ? "พิมพ์ชื่อยา ความแรง หรือรูปแบบยา" : "ค้นหาชื่อสมุนไพร ข้อบ่งใช้ หรือรูปแบบยา"} autoComplete="off" />{query ? <button onClick={() => { setQuery(""); resetPage(); }} aria-label="ล้างคำค้น">×</button> : <kbd>⌘ K</kbd>}</label>
+          <div className="quick-links"><span>ค้นหายอดนิยม</span>{(activeView === "formulary" ? ["Paracetamol", "Amoxicillin", "Metformin"] : ["ฟ้าทะลายโจร", "พญายอ", "ขมิ้นชัน"]).map((term) => <button key={term} onClick={() => { setQuery(term); resetPage(); }}>{term}</button>)}</div>
         </div>
-        <aside className="hero-ledger" aria-label="สรุปข้อมูล"><p>THE COLLECTION</p><strong>{(data?.meta.recordCount ?? 708).toLocaleString("th-TH")}</strong><span>รายการที่ค้นหาได้</span><dl><div><dt>กลุ่มยา</dt><dd>{groups.length || 12}</dd></div><div><dt>รายการ NED</dt><dd>{nedCount || 33}</dd></div><div><dt>มีเกณฑ์ DUE</dt><dd>{dueCount || 25}</dd></div></dl><div className="ledger-mark"><span>Rx</span><i /></div></aside>
+        <aside className="hero-ledger" aria-label="สรุปข้อมูล"><p>{activeView === "formulary" ? "THE COLLECTION" : "HOSPITAL HERBAL SET"}</p><strong>{activeView === "formulary" ? (data?.meta.recordCount ?? 708).toLocaleString("th-TH") : herbalProfiles.length.toLocaleString("th-TH")}</strong><span>{activeView === "formulary" ? "รายการที่ค้นหาได้" : "รายการสมุนไพรของโรงพยาบาล"}</span><dl>{activeView === "formulary" ? <><div><dt>กลุ่มยา</dt><dd>{groups.length || 12}</dd></div><div><dt>รายการ NED</dt><dd>{nedCount || 33}</dd></div><div><dt>มีเกณฑ์ DUE</dt><dd>{dueCount || 25}</dd></div></> : <><div><dt>จับคู่ตรง</dt><dd>{herbalProfiles.length - herbalReviewCount}</dd></div><div><dt>ต้องทบทวนตำรับ</dt><dd>{herbalReviewCount}</dd></div><div><dt>บัญชีรายการยาเฉพาะ</dt><dd>{herbalSpecificCount}</dd></div></>}</dl><div className="ledger-mark"><span>{activeView === "formulary" ? "Rx" : "Herb"}</span><i /></div></aside>
       </section>
 
       {loadError && <div className="error-note">ไม่สามารถเปิดชุดข้อมูลยาได้ กรุณาตรวจสอบไฟล์ข้อมูลใน Repository</div>}
 
+      {activeView === "formulary" ? <>
       <section className="collection-section" id="collections">
         <div className="section-title"><div><span>01</span><p>COLLECTION INDEX</p></div><h2>เลือกจากกลุ่มยา</h2><button onClick={() => { setSelectedGroup("ทั้งหมด"); setSelectedFilter("ทั้งหมด"); resetPage(); }}>ล้างตัวกรอง ↻</button></div>
         <div className="collection-rail">
@@ -186,7 +221,38 @@ export default function Home() {
         </aside>
       </section>
 
-      <footer className="footer"><div><b>BCH</b><span>Bangchak Hospital Formulary</span></div><p>ปีงบประมาณ 2569 · ข้อมูล {data?.meta.recordCount ?? 708} รายการ</p><a href="#top">กลับด้านบน ↑</a></footer>
+      </> : (
+        <section className="herbal-directory" id="herbal-directory">
+          <header className="herbal-directory-head">
+            <div><span>02 / HERBAL DIRECTORY</span><h2>{query ? `ผลการค้นหา “${query}”` : "ยาสมุนไพรที่โรงพยาบาลมี"}</h2><p>เลือกแต่ละรายการเพื่อดูข้อบ่งใช้ ขนาดและวิธีใช้ ข้อควรระวัง และหน้าที่อ้างอิงในหนังสือ</p></div>
+            <strong>{herbalItems.length.toLocaleString("th-TH")}<small> / {herbalProfiles.length} รายการ</small></strong>
+          </header>
+
+          <div className="herbal-source-note" id="herbal-source">
+            <span>HERB<br />2566</span>
+            <div><small>แหล่งข้อมูลหลัก</small><strong>{HERBAL_SOURCE.title}</strong><p>{HERBAL_SOURCE.note}</p><a href={HERBAL_SOURCE.sourceUrl} target="_blank" rel="noreferrer">เปิดหน้าบัญชีสมุนไพรของ อย. ↗</a></div>
+            <div className="source-stats"><b>{herbalProfiles.length - herbalReviewCount}</b><small>จับคู่ตรง</small><b>{herbalReviewCount}</b><small>ต้องทบทวนตำรับ</small></div>
+          </div>
+
+          <div className="herbal-grid">
+            {herbalItems.map(({ profile, drug }, index) => (
+              <button className="herbal-card" key={profile.hospitalDrugId} onClick={() => setSelectedDrug(drug)}>
+                <span className="herbal-card-number">{String(index + 1).padStart(2, "0")}</span>
+                <span className={`herbal-match ${profile.matchStatus}`}>{profile.matchStatus === "matched" ? "จับคู่แล้ว" : "ทบทวนตำรับ"}</span>
+                <h3>{drug.name}</h3>
+                <p className="matched-title">ในบัญชี: {profile.matchedTitle}</p>
+                <p className="herbal-indication">{profile.indication}</p>
+                <div><span>{profile.officialForms}</span><strong>{profile.accountCategory.replace("บัญชีรายการยา", "บัญชี")}</strong></div>
+                <small>PDF หน้า {profile.pdfPages.join(", ")} · เอกสารหน้า {profile.printedPages.join(", ")}</small>
+                <i>ดูข้อมูล ↗</i>
+              </button>
+            ))}
+          </div>
+          {data && herbalItems.length === 0 && <div className="empty-result herbal-empty"><span>⌕</span><h3>ยังไม่พบสมุนไพรนี้</h3><p>ลองค้นด้วยชื่อยา ข้อบ่งใช้ หรือรูปแบบยา</p></div>}
+        </section>
+      )}
+
+      <footer className="footer"><div><b>BCH</b><span>Bangchak Hospital Formulary</span></div><p>{activeView === "formulary" ? `ปีงบประมาณ 2569 · ข้อมูล ${data?.meta.recordCount ?? 708} รายการ` : `${HERBAL_SOURCE.title} · ยาโรงพยาบาล ${herbalProfiles.length} รายการ`}</p><a href="#top">กลับด้านบน ↑</a></footer>
 
       {selectedDrug && (
         <div className="modal-backdrop" onMouseDown={() => setSelectedDrug(null)}>
@@ -261,7 +327,24 @@ export default function Home() {
                 </article>
               )}
 
-              {selectedDrug.evidenceStatus === "thai-herbal-source-pending-review" && (
+              {selectedHerbalProfile && (
+                <article className={`herbal-profile ${selectedHerbalProfile.matchStatus}`}>
+                  <header>
+                    <div><small>HERB 2566 · {selectedHerbalProfile.accountCategory}</small><h4>{selectedHerbalProfile.matchedTitle}</h4></div>
+                    <span>{selectedHerbalProfile.matchStatus === "matched" ? "MATCHED" : "REVIEW FORMULA"}</span>
+                  </header>
+                  <p className="herbal-match-note">{selectedHerbalProfile.matchNote}</p>
+                  <dl>
+                    <div><dt>รูปแบบในบัญชี</dt><dd>{selectedHerbalProfile.officialForms}</dd></div>
+                    <div><dt>สรรพคุณ / ข้อบ่งใช้</dt><dd>{selectedHerbalProfile.indication}</dd></div>
+                    <div><dt>ขนาดและวิธีใช้</dt><dd>{selectedHerbalProfile.dosage}</dd></div>
+                  </dl>
+                  <div className="herbal-safety"><small>ข้อห้าม / ข้อควรระวังสำคัญ</small><ul>{selectedHerbalProfile.safety.map((item) => <li key={item}>{item}</li>)}</ul></div>
+                  <footer><strong>{HERBAL_SOURCE.fileName}</strong><span>PDF หน้า {selectedHerbalProfile.pdfPages.join(", ")} · เลขหน้าในเอกสาร {selectedHerbalProfile.printedPages.join(", ")}</span><a href={HERBAL_SOURCE.sourceUrl} target="_blank" rel="noreferrer">บัญชีทางการ ↗</a></footer>
+                </article>
+              )}
+
+              {selectedDrug.evidenceStatus === "thai-herbal-source-pending-review" && !selectedHerbalProfile && (
                 <div className="herbal-evidence">
                   <strong>แหล่งข้อมูลสมุนไพรทางการ</strong>
                   <p>รายการนี้เชื่อมกับบัญชียาหลักแห่งชาติด้านสมุนไพร แต่ยังต้องจับคู่ตำรับและทบทวนรายละเอียดรายตัวโดยเภสัชกร</p>
