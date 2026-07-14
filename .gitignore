@@ -40,3 +40,8 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# local evidence-import caches
+/scripts/openfda_label_cache.json
+/scripts/openfda_route_cache.json
+/scripts/thai_ndi_cache.json

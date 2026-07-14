@@ -53,3 +53,26 @@ test("adds the clinical profile schema to every drug without inventing missing d
   assert.equal(metformin.hospitalStatus.essentialDrug, true);
   assert.equal(metformin.lastReviewed, "2026-07-14");
 });
+
+test("attaches official evidence with route-safe matching and review status", async () => {
+  const payload = JSON.parse(await readFile(new URL("public/data/drugs.json", root), "utf8"));
+  const statusCount = payload.meta.evidenceCoverage.statuses.reduce((sum, item) => sum + item.count, 0);
+  assert.equal(statusCount, 708);
+  assert.equal(payload.meta.evidenceCoverage.totalRecords, 708);
+  assert.ok(payload.drugs.filter((drug) => drug.officialLabel).length >= 400);
+  assert.ok(payload.drugs.filter((drug) => drug.thaiNdi).length >= 480);
+
+  for (const drug of payload.drugs) {
+    assert.equal(typeof drug.evidenceStatus, "string");
+    if (drug.officialLabel) {
+      assert.match(drug.officialLabel.sourceUrl, /^https:\/\/dailymed\.nlm\.nih\.gov\//);
+      assert.ok(drug.officialLabel.indication || drug.officialLabel.dosage);
+    }
+    if (drug.thaiNdi) assert.match(drug.thaiNdi.sourceUrl, /^https:\/\/ndi\.fda\.moph\.go\.th\//);
+  }
+
+  const paracetamolInfusion = payload.drugs.find((drug) => drug.name === "Paracetamol" && drug.dosageForm === "infusion");
+  assert.ok(paracetamolInfusion.officialLabel.routes.includes("INTRAVENOUS"));
+  assert.equal(payload.meta.routeValidation.checkedRecords, 64);
+  assert.equal(payload.meta.routeValidation.correctedRecords + payload.meta.routeValidation.removedRecords, 64);
+});

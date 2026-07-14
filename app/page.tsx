@@ -21,6 +21,17 @@ type Drug = {
   hospitalStatus: { essentialDrug: boolean; dueRequired: boolean };
   references: string[];
   lastReviewed: string | null;
+  evidenceStatus: "reviewed" | "official-label-pending-review" | "thai-ndi-pending-review" | "thai-herbal-source-pending-review" | "hospital-formulary-only";
+  officialLabel: {
+    provider: string; matchedGenericName: string; dosageForms: string[]; routes: string[];
+    indication: string; dosage: string; renal: string; monitoring: string[];
+    setId: string; effectiveDate: string; sourceUrl: string; importedAt: string;
+    inheritedFrom?: string;
+  } | null;
+  thaiNdi: {
+    sourceUrl: string; genericName: string; dosageForms: string; drugClass: string;
+    account: string; matchScore: number; inheritedFrom?: string;
+  } | null;
 };
 
 type DrugData = {
@@ -45,6 +56,14 @@ const categoryStyle: Record<string, { mark: string; color: string }> = {
 
 const filterOptions = ["ทั้งหมด", "บัญชียาหลัก", "จำกัดการใช้", "มีเกณฑ์ DUE"];
 const formatReviewDate = (value: string) => value.split("-").reverse().join("/");
+const evidenceLabel = (drug: Drug) => {
+  if (drug.lastReviewed) return `ทบทวน ${formatReviewDate(drug.lastReviewed)}`;
+  if (drug.evidenceStatus === "official-label-pending-review") return "พบฉลากทางการ · รอทบทวน";
+  if (drug.evidenceStatus === "thai-ndi-pending-review") return "ข้อมูล อย.ไทย · รอทบทวน";
+  if (drug.evidenceStatus === "thai-herbal-source-pending-review") return "บัญชีสมุนไพร · รอทบทวน";
+  return "ข้อมูลกรอบยาโรงพยาบาลเท่านั้น";
+};
+const evidenceCode = (drug: Drug) => drug.lastReviewed ? "VERIFIED" : drug.officialLabel ? "OFFICIAL LABEL" : drug.thaiNdi ? "THAI NDI" : drug.evidenceStatus === "thai-herbal-source-pending-review" ? "THAI HERBAL" : "FORMULARY";
 
 export default function Home() {
   const [data, setData] = useState<DrugData | null>(null);
@@ -96,6 +115,9 @@ export default function Home() {
         drug.measure,
         drug.symptomGroup,
         drug.indications.map((item) => item.name).join(" "),
+        drug.officialLabel?.indication,
+        drug.officialLabel?.dosage,
+        drug.thaiNdi?.drugClass,
       ].join(" ").toLocaleLowerCase("th");
       return groupMatch && filterMatch && (!keyword || searchable.includes(keyword));
     });
@@ -107,6 +129,9 @@ export default function Home() {
   const essentialCount = drugs.filter((drug) => drug.essential).length;
   const restrictedCount = drugs.filter((drug) => drug.status === "จำกัดการใช้").length;
   const dueCount = drugs.filter((drug) => drug.status === "มีเกณฑ์ DUE").length;
+  const officialEvidenceCount = drugs.filter((drug) => drug.officialLabel).length;
+  const thaiEvidenceCount = drugs.filter((drug) => drug.thaiNdi || drug.evidenceStatus === "thai-herbal-source-pending-review").length;
+  const sourceBackedCount = drugs.filter((drug) => drug.officialLabel || drug.thaiNdi || drug.evidenceStatus === "thai-herbal-source-pending-review").length;
   const chartGroups = groups.filter((group) => group.name !== "กรอบยาโรงพยาบาล").slice(0, 6);
   const chartMax = Math.max(...chartGroups.map((group) => group.count), 1);
 
@@ -156,7 +181,7 @@ export default function Home() {
         <aside className="insight-column" id="insights">
           <section className="insight-card overview-card"><p className="card-label">DATABASE SIGNAL</p><div className="ring-chart"><div><strong>{Math.round((essentialCount / Math.max(drugs.length, 1)) * 100) || 72}%</strong><span>บัญชียาหลัก</span></div></div><div className="signal-stats"><div><span>ในบัญชียาหลัก</span><strong>{essentialCount.toLocaleString("th-TH")}</strong></div><div><span>จำกัดการใช้</span><strong>{restrictedCount}</strong></div></div></section>
           <section className="insight-card group-chart"><div className="card-heading"><p className="card-label">SPECIAL COLLECTIONS</p><span>รายการ</span></div>{chartGroups.map((group) => <div className="mini-bar" key={group.name}><div><span>{group.name}</span><strong>{group.count}</strong></div><i><b style={{ width: `${Math.max(8, (group.count / chartMax) * 100)}%`, background: categoryStyle[group.name]?.color }} /></i></div>)}</section>
-          <section className="insight-card source-card"><span>PDF</span><div><p>ชุดข้อมูลล่าสุด</p><strong>{data?.meta.generatedAt ?? "14 กรกฎาคม 2569"}</strong><small>อ้างอิงจากเอกสารต้นฉบับ {data?.meta.sourceCount ?? 12} ชุด</small></div></section>
+          <section className="insight-card source-card"><span>REF</span><div><p>หลักฐานประกอบรายรายการ</p><strong>{sourceBackedCount.toLocaleString("th-TH")} รายการมีแหล่งทางการ</strong><small>ฉลากทางการ {officialEvidenceCount} · อย.ไทย/สมุนไพร {thaiEvidenceCount}</small></div></section>
           <p className="clinical-note">ข้อมูลนี้ใช้เพื่อการสืบค้น โปรดตรวจสอบเอกสารต้นฉบับและดุลยพินิจของแพทย์หรือเภสัชกรก่อนใช้ยา</p>
         </aside>
       </section>
@@ -169,8 +194,8 @@ export default function Home() {
             <button className="drawer-close" onClick={() => setSelectedDrug(null)} aria-label="ปิดรายละเอียด">×</button>
             <div className="drawer-index">
               <span>{selectedDrug.id}</span>
-              <small className={selectedDrug.lastReviewed ? "reviewed" : "pending-review"}>
-                {selectedDrug.lastReviewed ? `ทบทวน ${formatReviewDate(selectedDrug.lastReviewed)}` : "รอทบทวนข้อมูลคลินิก"}
+              <small className={selectedDrug.lastReviewed ? "reviewed" : selectedDrug.officialLabel || selectedDrug.thaiNdi ? "source-found" : "pending-review"}>
+                {evidenceLabel(selectedDrug)}
               </small>
             </div>
 
@@ -198,13 +223,49 @@ export default function Home() {
             <section className="clinical-section">
               <div className="clinical-heading">
                 <div><small>CLINICAL PROFILE</small><h3>ข้อมูลการใช้ยา</h3></div>
-                <span>{selectedDrug.lastReviewed ? "VERIFIED" : "PENDING"}</span>
+                <span>{evidenceCode(selectedDrug)}</span>
               </div>
 
-              {!selectedDrug.lastReviewed && (
+              {!selectedDrug.lastReviewed && !selectedDrug.officialLabel && !selectedDrug.thaiNdi && selectedDrug.evidenceStatus === "hospital-formulary-only" && (
                 <div className="clinical-empty">
-                  <strong>ยังไม่มีข้อมูลที่ผ่านการทบทวน</strong>
-                  <p>โครงสร้างข้อมูลพร้อมแล้ว กรุณาให้เภสัชกรเพิ่มข้อบ่งใช้ ขนาดยา การปรับยาในไต และแหล่งอ้างอิงก่อนนำไปใช้ทางคลินิก</p>
+                  <strong>มีเฉพาะข้อมูลกรอบยาโรงพยาบาล</strong>
+                  <p>ยังไม่พบฉลากทางการที่จับคู่ชื่อและรูปแบบยาได้อย่างมั่นใจ จึงไม่แสดงขนาดยาหรือคำแนะนำทางคลินิกจากการคาดเดา</p>
+                </div>
+              )}
+
+              {selectedDrug.officialLabel && (
+                <article className="official-evidence">
+                  <header>
+                    <div><small>OFFICIAL LABEL · PENDING PHARMACIST REVIEW</small><strong>{selectedDrug.officialLabel.provider}</strong></div>
+                    <span>{selectedDrug.officialLabel.effectiveDate || "CURRENT"}</span>
+                  </header>
+                  <p className="evidence-meta">Matched: {selectedDrug.officialLabel.matchedGenericName} · Route: {selectedDrug.officialLabel.routes.join(", ") || "ไม่ระบุ"}</p>
+                  {selectedDrug.officialLabel.indication && <details open><summary>ข้อบ่งใช้จากฉลากทางการ</summary><p lang="en">{selectedDrug.officialLabel.indication}</p></details>}
+                  {selectedDrug.officialLabel.dosage && <details><summary>ขนาดและวิธีใช้จากฉลากทางการ</summary><p lang="en">{selectedDrug.officialLabel.dosage}</p></details>}
+                  {selectedDrug.officialLabel.renal && <details><summary>ข้อมูลการใช้ในผู้ป่วยไต</summary><p lang="en">{selectedDrug.officialLabel.renal}</p></details>}
+                  {selectedDrug.officialLabel.monitoring.length > 0 && <details><summary>ข้อความเกี่ยวกับการติดตาม</summary><ul lang="en">{selectedDrug.officialLabel.monitoring.map((item) => <li key={item}>{item}</li>)}</ul></details>}
+                  <a href={selectedDrug.officialLabel.sourceUrl} target="_blank" rel="noreferrer">เปิดฉลากฉบับเต็ม ↗</a>
+                </article>
+              )}
+
+              {selectedDrug.thaiNdi && (
+                <article className="ndi-evidence">
+                  <small>บัญชียาหลักแห่งชาติ · สำนักงานคณะกรรมการอาหารและยา</small>
+                  <h4>{selectedDrug.thaiNdi.genericName}</h4>
+                  <dl>
+                    <div><dt>กลุ่มยา</dt><dd>{selectedDrug.thaiNdi.drugClass}</dd></div>
+                    <div><dt>รูปแบบในบัญชี</dt><dd>{selectedDrug.thaiNdi.dosageForms}</dd></div>
+                    <div><dt>บัญชี</dt><dd>{selectedDrug.thaiNdi.account}</dd></div>
+                  </dl>
+                  <a href={selectedDrug.thaiNdi.sourceUrl} target="_blank" rel="noreferrer">ตรวจสอบกับ อย.ไทย ↗</a>
+                </article>
+              )}
+
+              {selectedDrug.evidenceStatus === "thai-herbal-source-pending-review" && (
+                <div className="herbal-evidence">
+                  <strong>แหล่งข้อมูลสมุนไพรทางการ</strong>
+                  <p>รายการนี้เชื่อมกับบัญชียาหลักแห่งชาติด้านสมุนไพร แต่ยังต้องจับคู่ตำรับและทบทวนรายละเอียดรายตัวโดยเภสัชกร</p>
+                  <a href="https://herbal.fda.moph.go.th/drug-list/category/ann-drug02" target="_blank" rel="noreferrer">เปิดบัญชียาสมุนไพร ↗</a>
                 </div>
               )}
 

@@ -10,6 +10,7 @@
     "build": "next build",
     "build:pages": "next build",
     "data:clinical": "node scripts/enrich_clinical_data.mjs",
+    "data:evidence": "node scripts/import_official_labels.mjs && node scripts/refine_official_routes.mjs && node scripts/import_thai_ndi.mjs && node scripts/inherit_clinical_evidence.mjs && node scripts/finalize_evidence_status.mjs",
     "start": "next start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern .next --ignore-pattern out"
