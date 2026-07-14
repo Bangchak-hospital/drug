@@ -11,7 +11,8 @@ test("exports a complete static drug dashboard", async () => {
   ]);
 
   assert.match(html, /คลังยา รพ\.บางจาก/);
-  assert.match(html, /ระบบค้นหาและ Dashboard/);
+  assert.match(html, /ค้นให้เจอ/);
+  assert.match(html, /ก่อนเลือกใช้/);
   assert.equal(payload.meta.sourceCount, 12);
   assert.equal(payload.meta.rawRowCount, 904);
   assert.equal(payload.meta.recordCount, 708);
