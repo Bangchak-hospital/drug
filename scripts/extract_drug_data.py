@@ -13,6 +13,7 @@ import pdfplumber
 APP_DIR = Path(__file__).resolve().parents[1]
 PDF_DIR = APP_DIR.parent
 OUTPUT = APP_DIR / "public" / "data" / "drugs.json"
+CLINICAL_PROFILES = APP_DIR / "scripts" / "clinical_profiles.json"
 
 SOURCE_GROUPS = {
     "1 ": "กรอบยาโรงพยาบาล",
@@ -139,6 +140,10 @@ def extract_pdf(path: Path) -> list[dict[str, object]]:
 
 
 def merge_records(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    clinical_profiles = {}
+    if CLINICAL_PROFILES.exists():
+        clinical_profiles = json.loads(CLINICAL_PROFILES.read_text(encoding="utf-8"))
+
     merged: dict[str, dict[str, object]] = {}
     for record in records:
         key = "|".join(normalize(str(record[field])) for field in ("name", "dosageForm", "strength"))
@@ -162,6 +167,28 @@ def merge_records(records: list[dict[str, object]]) -> list[dict[str, object]]:
         record["id"] = f"BCH-{index:04d}"
         account = str(record["account"]).upper()
         record["essential"] = bool(account) and "NED" not in account
+        record.update({
+            "genericName": record["name"],
+            "drugClass": "",
+            "indications": [],
+            "renalAdjustment": {
+                "eGFR_45_or_more": "",
+                "eGFR_30_to_44": "",
+                "eGFR_below_30": "",
+            },
+            "monitoring": [],
+            "hospitalStatus": {
+                "essentialDrug": record["essential"],
+                "dueRequired": record["status"] == "มีเกณฑ์ DUE" or "ยาที่มีเกณฑ์ DUE" in record["groups"],
+            },
+            "references": [],
+            "lastReviewed": None,
+        })
+
+        curated = clinical_profiles.get(normalize(str(record["name"])))
+        if curated:
+            record.update(curated)
+            record["essential"] = bool(record["hospitalStatus"]["essentialDrug"])
     return result
 
 

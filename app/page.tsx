@@ -7,6 +7,20 @@ type Drug = {
   status: string; groups: string[]; brand: string; company: string; note: string;
   measure: string; symptomGroup: string; drugCode24: string; purchase: string;
   dueCriteria: string; sourceFiles: string[]; sourcePages: number[]; essential: boolean;
+  genericName: string; drugClass: string;
+  indications: {
+    name: string;
+    adultDose: { initial: string; titration: string; maximum: string };
+  }[];
+  renalAdjustment: {
+    eGFR_45_or_more: string;
+    eGFR_30_to_44: string;
+    eGFR_below_30: string;
+  };
+  monitoring: string[];
+  hospitalStatus: { essentialDrug: boolean; dueRequired: boolean };
+  references: string[];
+  lastReviewed: string | null;
 };
 
 type DrugData = {
@@ -30,6 +44,7 @@ const categoryStyle: Record<string, { mark: string; color: string }> = {
 };
 
 const filterOptions = ["ทั้งหมด", "บัญชียาหลัก", "จำกัดการใช้", "มีเกณฑ์ DUE"];
+const formatReviewDate = (value: string) => value.split("-").reverse().join("/");
 
 export default function Home() {
   const [data, setData] = useState<DrugData | null>(null);
@@ -69,7 +84,19 @@ export default function Home() {
         || (selectedFilter === "บัญชียาหลัก" && drug.essential)
         || (selectedFilter === "จำกัดการใช้" && drug.status === "จำกัดการใช้")
         || (selectedFilter === "มีเกณฑ์ DUE" && drug.status === "มีเกณฑ์ DUE");
-      const searchable = [drug.name, drug.brand, drug.strength, drug.dosageForm, drug.account, drug.groups.join(" "), drug.measure, drug.symptomGroup].join(" ").toLocaleLowerCase("th");
+      const searchable = [
+        drug.name,
+        drug.genericName,
+        drug.drugClass,
+        drug.brand,
+        drug.strength,
+        drug.dosageForm,
+        drug.account,
+        drug.groups.join(" "),
+        drug.measure,
+        drug.symptomGroup,
+        drug.indications.map((item) => item.name).join(" "),
+      ].join(" ").toLocaleLowerCase("th");
       return groupMatch && filterMatch && (!keyword || searchable.includes(keyword));
     });
   }, [drugs, query, selectedGroup, selectedFilter]);
@@ -136,7 +163,102 @@ export default function Home() {
 
       <footer className="footer"><div><b>BCH</b><span>Bangchak Hospital Formulary</span></div><p>ปีงบประมาณ 2569 · ข้อมูล {data?.meta.recordCount ?? 708} รายการ</p><a href="#top">กลับด้านบน ↑</a></footer>
 
-      {selectedDrug && <div className="modal-backdrop" onMouseDown={() => setSelectedDrug(null)}><section className="drug-drawer" role="dialog" aria-modal="true" aria-labelledby="drug-title" onMouseDown={(event) => event.stopPropagation()}><button className="drawer-close" onClick={() => setSelectedDrug(null)} aria-label="ปิดรายละเอียด">×</button><div className="drawer-index"><span>{selectedDrug.id}</span><small>DRUG RECORD</small></div><div className="drawer-hero"><span>Rx</span><div><h2 id="drug-title">{selectedDrug.name}</h2><p>{[selectedDrug.brand, selectedDrug.company].filter(Boolean).join(" · ") || "รายการในกรอบบัญชียา"}</p></div></div><div className="drawer-tags">{selectedDrug.groups.map((group) => <span key={group}>{group}</span>)}</div><div className="detail-grid"><div><small>รูปแบบยา</small><strong>{selectedDrug.dosageForm || "ไม่ระบุ"}</strong></div><div><small>ความแรง</small><strong>{selectedDrug.strength || "ไม่ระบุ"}</strong></div><div><small>บัญชียา</small><strong>{selectedDrug.account || "ไม่ระบุ"}</strong></div><div><small>สถานะ</small><strong>{selectedDrug.status}</strong></div></div>{selectedDrug.symptomGroup && <div className="info-block"><small>กลุ่มอาการ</small><p>{selectedDrug.symptomGroup}</p></div>}{selectedDrug.measure && <div className="info-block warning-block"><small>มาตรการที่กำหนด</small><p>{selectedDrug.measure}</p></div>}{selectedDrug.dueCriteria && <div className="info-block due-block"><small>เกณฑ์ DUE</small><p>{selectedDrug.dueCriteria}</p></div>}{selectedDrug.note && <div className="info-block"><small>หมายเหตุ</small><p>{selectedDrug.note}</p></div>}{selectedDrug.drugCode24 && <div className="code-row"><small>รหัสยา 24 หลัก</small><code>{selectedDrug.drugCode24}</code></div>}<div className="drawer-warning"><span>!</span><p><strong>โปรดตรวจสอบก่อนใช้งาน</strong>รายละเอียดนี้ดึงจากเอกสารต้นฉบับอัตโนมัติ ควรตรวจสอบกับเอกสาร PDF และเภสัชกร</p></div><footer><strong>เอกสารอ้างอิง</strong>{selectedDrug.sourceFiles.map((file, index) => <p key={file}>{file} · หน้า {selectedDrug.sourcePages[index] ?? "-"}</p>)}</footer></section></div>}
+      {selectedDrug && (
+        <div className="modal-backdrop" onMouseDown={() => setSelectedDrug(null)}>
+          <section className="drug-drawer" role="dialog" aria-modal="true" aria-labelledby="drug-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="drawer-close" onClick={() => setSelectedDrug(null)} aria-label="ปิดรายละเอียด">×</button>
+            <div className="drawer-index">
+              <span>{selectedDrug.id}</span>
+              <small className={selectedDrug.lastReviewed ? "reviewed" : "pending-review"}>
+                {selectedDrug.lastReviewed ? `ทบทวน ${formatReviewDate(selectedDrug.lastReviewed)}` : "รอทบทวนข้อมูลคลินิก"}
+              </small>
+            </div>
+
+            <div className="drawer-hero">
+              <span>Rx</span>
+              <div>
+                <h2 id="drug-title">{selectedDrug.genericName || selectedDrug.name}</h2>
+                <p>{selectedDrug.name}{selectedDrug.drugClass ? ` · ${selectedDrug.drugClass}` : ""}</p>
+              </div>
+            </div>
+
+            <div className="drawer-tags">
+              {selectedDrug.groups.map((group) => <span key={group}>{group}</span>)}
+              {selectedDrug.hospitalStatus.essentialDrug && <span className="essential-tag">บัญชียาหลัก</span>}
+              {selectedDrug.hospitalStatus.dueRequired && <span className="due-tag">ต้องทำ DUE</span>}
+            </div>
+
+            <div className="detail-grid">
+              <div><small>รูปแบบยา</small><strong>{selectedDrug.dosageForm || "ไม่ระบุ"}</strong></div>
+              <div><small>ความแรง</small><strong>{selectedDrug.strength || "ไม่ระบุ"}</strong></div>
+              <div><small>กลุ่มยา</small><strong>{selectedDrug.drugClass || "รอทบทวน"}</strong></div>
+              <div><small>สถานะโรงพยาบาล</small><strong>{selectedDrug.status}</strong></div>
+            </div>
+
+            <section className="clinical-section">
+              <div className="clinical-heading">
+                <div><small>CLINICAL PROFILE</small><h3>ข้อมูลการใช้ยา</h3></div>
+                <span>{selectedDrug.lastReviewed ? "VERIFIED" : "PENDING"}</span>
+              </div>
+
+              {!selectedDrug.lastReviewed && (
+                <div className="clinical-empty">
+                  <strong>ยังไม่มีข้อมูลที่ผ่านการทบทวน</strong>
+                  <p>โครงสร้างข้อมูลพร้อมแล้ว กรุณาให้เภสัชกรเพิ่มข้อบ่งใช้ ขนาดยา การปรับยาในไต และแหล่งอ้างอิงก่อนนำไปใช้ทางคลินิก</p>
+                </div>
+              )}
+
+              {selectedDrug.indications.map((indication) => (
+                <article className="indication-card" key={indication.name}>
+                  <small>ข้อบ่งใช้</small>
+                  <h4>{indication.name}</h4>
+                  <dl>
+                    <div><dt>ขนาดเริ่มต้น</dt><dd>{indication.adultDose.initial}</dd></div>
+                    <div><dt>การปรับขนาด</dt><dd>{indication.adultDose.titration}</dd></div>
+                    <div><dt>ขนาดสูงสุด</dt><dd>{indication.adultDose.maximum}</dd></div>
+                  </dl>
+                </article>
+              ))}
+
+              {Object.values(selectedDrug.renalAdjustment).some(Boolean) && (
+                <div className="renal-card">
+                  <small>การปรับยาตามการทำงานของไต</small>
+                  <div><b>eGFR ≥ 45</b><p>{selectedDrug.renalAdjustment.eGFR_45_or_more}</p></div>
+                  <div><b>eGFR 30–44</b><p>{selectedDrug.renalAdjustment.eGFR_30_to_44}</p></div>
+                  <div className="renal-stop"><b>eGFR &lt; 30</b><p>{selectedDrug.renalAdjustment.eGFR_below_30}</p></div>
+                </div>
+              )}
+
+              {selectedDrug.monitoring.length > 0 && (
+                <div className="monitoring-card">
+                  <small>การติดตาม</small>
+                  <div>{selectedDrug.monitoring.map((item) => <span key={item}>{item}</span>)}</div>
+                </div>
+              )}
+            </section>
+
+            {selectedDrug.symptomGroup && <div className="info-block"><small>กลุ่มอาการ</small><p>{selectedDrug.symptomGroup}</p></div>}
+            {selectedDrug.measure && <div className="info-block warning-block"><small>มาตรการที่กำหนด</small><p>{selectedDrug.measure}</p></div>}
+            {selectedDrug.dueCriteria && <div className="info-block due-block"><small>เกณฑ์ DUE</small><p>{selectedDrug.dueCriteria}</p></div>}
+            {selectedDrug.note && <div className="info-block"><small>หมายเหตุ</small><p>{selectedDrug.note}</p></div>}
+            {selectedDrug.drugCode24 && <div className="code-row"><small>รหัสยา 24 หลัก</small><code>{selectedDrug.drugCode24}</code></div>}
+
+            <div className="drawer-warning">
+              <span>!</span>
+              <p><strong>โปรดตรวจสอบก่อนใช้งาน</strong>ข้อมูลนี้เป็นข้อมูลสนับสนุนการทำงาน ไม่ใช้แทนคำสั่งแพทย์ แนวทางโรงพยาบาล หรือการทบทวนโดยเภสัชกร</p>
+            </div>
+
+            <footer>
+              <strong>แหล่งอ้างอิงทางคลินิก</strong>
+              {selectedDrug.references.length > 0
+                ? selectedDrug.references.map((reference, index) => <p key={reference}><a href={reference} target="_blank" rel="noreferrer">เอกสารอ้างอิง {index + 1} ↗</a></p>)
+                : <p>ยังไม่มีแหล่งอ้างอิงที่ผ่านการทบทวน</p>}
+              <strong className="source-title">เอกสารกรอบบัญชียา</strong>
+              {selectedDrug.sourceFiles.map((file, index) => <p key={file}>{file} · หน้า {selectedDrug.sourcePages[index] ?? "-"}</p>)}
+            </footer>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

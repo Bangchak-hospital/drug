@@ -1,0 +1,35 @@
+{
+  "metforminhcl": {
+    "genericName": "Metformin",
+    "strength": "500 mg tablet",
+    "drugClass": "Biguanide",
+    "indications": [
+      {
+        "name": "Type 2 diabetes mellitus",
+        "adultDose": {
+          "initial": "500 mg orally once or twice daily with meals",
+          "titration": "Increase gradually according to glucose response",
+          "maximum": "ขึ้นกับชนิดผลิตภัณฑ์และแนวทางที่โรงพยาบาลกำหนด"
+        }
+      }
+    ],
+    "renalAdjustment": {
+      "eGFR_45_or_more": "ใช้ได้โดยติดตามการทำงานของไต",
+      "eGFR_30_to_44": "ประเมินความเหมาะสมและจำกัดขนาดตามแนวทาง",
+      "eGFR_below_30": "ห้ามใช้"
+    },
+    "monitoring": [
+      "eGFR",
+      "HbA1c",
+      "Vitamin B12 เมื่อใช้ระยะยาว"
+    ],
+    "hospitalStatus": {
+      "essentialDrug": true,
+      "dueRequired": false
+    },
+    "references": [
+      "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=8cd5555c-f6b2-28d8-e053-2a95a90a5f1e"
+    ],
+    "lastReviewed": "2026-07-14"
+  }
+}

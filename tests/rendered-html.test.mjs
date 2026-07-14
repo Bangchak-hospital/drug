@@ -30,3 +30,26 @@ test("keeps records searchable and traceable to source PDFs", async () => {
   assert.ok(payload.drugs.some((drug) => drug.groups.includes("ยาที่มีเกณฑ์ DUE")));
   assert.ok(payload.drugs.some((drug) => drug.groups.includes("ยาสมุนไพร")));
 });
+
+test("adds the clinical profile schema to every drug without inventing missing data", async () => {
+  const payload = JSON.parse(await readFile(new URL("public/data/drugs.json", root), "utf8"));
+  for (const drug of payload.drugs) {
+    assert.equal(typeof drug.genericName, "string");
+    assert.equal(typeof drug.drugClass, "string");
+    assert.ok(Array.isArray(drug.indications));
+    assert.equal(typeof drug.renalAdjustment, "object");
+    assert.ok(Array.isArray(drug.monitoring));
+    assert.equal(typeof drug.hospitalStatus.essentialDrug, "boolean");
+    assert.equal(typeof drug.hospitalStatus.dueRequired, "boolean");
+    assert.ok(Array.isArray(drug.references));
+    assert.ok(Object.hasOwn(drug, "lastReviewed"));
+  }
+
+  const metformin = payload.drugs.find((drug) => drug.name === "Metformin HCl");
+  assert.equal(metformin.genericName, "Metformin");
+  assert.equal(metformin.strength, "500 mg tablet");
+  assert.equal(metformin.drugClass, "Biguanide");
+  assert.equal(metformin.renalAdjustment.eGFR_below_30, "ห้ามใช้");
+  assert.equal(metformin.hospitalStatus.essentialDrug, true);
+  assert.equal(metformin.lastReviewed, "2026-07-14");
+});
