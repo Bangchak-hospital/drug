@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
+const execFileAsync = promisify(execFile);
 
 test("exports a complete static drug dashboard", async () => {
   const [html, payload] = await Promise.all([
@@ -13,12 +17,42 @@ test("exports a complete static drug dashboard", async () => {
   assert.match(html, /คลังยา รพ\.บางจาก/);
   assert.match(html, /ค้นให้เจอ/);
   assert.match(html, /ก่อนเลือกใช้/);
+  assert.match(html, /กลุ่มยา/);
   assert.match(html, /บัญชียาหลักแห่งชาติด้านสมุนไพร/);
   assert.equal(payload.meta.sourceCount, 12);
   assert.equal(payload.meta.rawRowCount, 904);
   assert.equal(payload.meta.recordCount, 708);
   assert.equal(payload.meta.groups.length, 12);
   assert.equal(payload.drugs.length, 708);
+});
+
+test("separates hospital formulary records into practical drug-use groups", async () => {
+  const script = `
+    import { readFile } from "node:fs/promises";
+    import { getDrugUseGroup } from "./app/drug-use-groups.ts";
+    const payload = JSON.parse(await readFile("./public/data/drugs.json", "utf8"));
+    const grouped = payload.drugs.map((drug) => ({ id: drug.id, group: getDrugUseGroup(drug).id }));
+    const counts = Object.groupBy(grouped, (item) => item.group);
+    console.log(JSON.stringify({
+      total: grouped.length,
+      contraceptives: counts.contraceptives?.length ?? 0,
+      unclassified: counts.other?.length ?? 0,
+      contraceptiveIds: counts.contraceptives?.map((item) => item.id) ?? []
+    }));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, [
+    "--experimental-strip-types",
+    "--input-type=module",
+    "--eval",
+    script,
+  ], { cwd: fileURLToPath(root) });
+  const result = JSON.parse(stdout);
+
+  assert.equal(result.total, 708);
+  assert.equal(result.contraceptives, 6);
+  assert.ok(result.unclassified <= 30);
+  assert.ok(result.contraceptiveIds.includes("BCH-0234"));
+  assert.ok(result.contraceptiveIds.includes("BCH-0362"));
 });
 
 test("maps every hospital herbal medicine to Herb_2566 knowledge", async () => {

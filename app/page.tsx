@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { HERBAL_SOURCE, herbalProfiles } from "./herbal-data";
+import { FALLBACK_DRUG_GROUP, drugUseGroups, getDrugUseGroup } from "./drug-use-groups";
 
 type Drug = {
   id: string; name: string; dosageForm: string; strength: string; account: string;
@@ -75,7 +76,8 @@ export default function Home() {
   const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
   const [visibleCount, setVisibleCount] = useState(14);
   const [loadError, setLoadError] = useState(false);
-  const [activeView, setActiveView] = useState<"formulary" | "herbal">("formulary");
+  const [activeView, setActiveView] = useState<"formulary" | "groups" | "herbal">("formulary");
+  const [selectedUseGroup, setSelectedUseGroup] = useState("all");
 
   useEffect(() => {
     fetch("./data/drugs.json")
@@ -143,6 +145,37 @@ export default function Home() {
       ].join(" ").toLocaleLowerCase("th").includes(keyword));
   }, [drugs, query]);
 
+  const useGroupStats = useMemo(() => {
+    const definitions = [...drugUseGroups, FALLBACK_DRUG_GROUP];
+    return definitions.map((group) => {
+      const matched = drugs.filter((drug) => getDrugUseGroup(drug).id === group.id);
+      return {
+        ...group,
+        count: matched.length,
+        samples: matched.slice(0, 3).map((drug) => drug.name),
+      };
+    }).filter((group) => group.count > 0);
+  }, [drugs]);
+
+  const useGroupDrugs = useMemo(() => {
+    const keyword = query.trim().toLocaleLowerCase("th");
+    return drugs.filter((drug) => {
+      const group = getDrugUseGroup(drug);
+      if (selectedUseGroup !== "all" && group.id !== selectedUseGroup) return false;
+      if (!keyword) return true;
+      return [
+        drug.name,
+        drug.genericName,
+        drug.strength,
+        drug.dosageForm,
+        drug.brand,
+        drug.drugClass,
+        drug.thaiNdi?.drugClass,
+        group.name,
+      ].join(" ").toLocaleLowerCase("th").includes(keyword);
+    });
+  }, [drugs, query, selectedUseGroup]);
+
   const resetPage = () => setVisibleCount(14);
   const chooseGroup = (group: string) => { setSelectedGroup(group); resetPage(); };
   const nedCount = drugs.filter((drug) => drug.groups.includes("ยานอกบัญชียาหลัก (NED)")).length;
@@ -157,10 +190,14 @@ export default function Home() {
   const selectedHerbalProfile = selectedDrug ? herbalProfileById.get(selectedDrug.id) ?? null : null;
   const herbalReviewCount = herbalProfiles.filter((item) => item.matchStatus === "review").length;
   const herbalSpecificCount = herbalProfiles.filter((item) => item.accountCategory === "บัญชีรายการยาเฉพาะ").length;
-  const changeView = (view: "formulary" | "herbal") => {
+  const unclassifiedCount = useGroupStats.find((group) => group.id === FALLBACK_DRUG_GROUP.id)?.count ?? 0;
+  const selectedUseGroupMeta = useGroupStats.find((group) => group.id === selectedUseGroup);
+  const contraceptiveCount = useGroupStats.find((group) => group.id === "contraceptives")?.count ?? 0;
+  const changeView = (view: "formulary" | "groups" | "herbal") => {
     setActiveView(view);
     setQuery("");
     setSelectedDrug(null);
+    setSelectedUseGroup("all");
     setVisibleCount(14);
   };
 
@@ -168,25 +205,37 @@ export default function Home() {
     <main className="site-shell">
       <header className="masthead" id="top">
         <a className="wordmark" href="#top" aria-label="กลับหน้าแรก"><span className="wordmark-capsule"><i /><i /></span><span><b>BCH</b><small>FORMULARY · 2569</small></span></a>
-        <nav aria-label="เมนูหลัก">{activeView === "formulary" ? <><a href="#directory">บัญชียา</a><a href="#collections">กลุ่มยา</a><a href="#insights">ภาพรวม</a></> : <><a href="#herbal-directory">รายการสมุนไพร</a><a href="#herbal-source">แหล่งข้อมูล</a></>}</nav>
+        <nav aria-label="เมนูหลัก">{activeView === "formulary" ? <><a href="#directory">บัญชียา</a><a href="#collections">กลุ่มเอกสาร</a><a href="#insights">ภาพรวม</a></> : activeView === "groups" ? <><a href="#use-groups">เลือกกลุ่มยา</a><a href="#group-results">รายการยา</a></> : <><a href="#herbal-directory">รายการสมุนไพร</a><a href="#herbal-source">แหล่งข้อมูล</a></>}</nav>
         <div className="edition"><span />ข้อมูลจาก PDF {data?.meta.sourceCount ?? 12} ชุด</div>
       </header>
 
       <div className="view-tabs" role="tablist" aria-label="เลือกชุดข้อมูล">
         <button role="tab" aria-selected={activeView === "formulary"} className={activeView === "formulary" ? "active" : ""} onClick={() => changeView("formulary")}><span>01</span>บัญชียาโรงพยาบาล</button>
-        <button role="tab" aria-selected={activeView === "herbal"} className={activeView === "herbal" ? "active herbal-tab" : "herbal-tab"} onClick={() => changeView("herbal")}><span>02</span>บัญชียาหลักแห่งชาติด้านสมุนไพร</button>
+        <button role="tab" aria-selected={activeView === "groups"} className={activeView === "groups" ? "active groups-tab" : "groups-tab"} onClick={() => changeView("groups")}><span>02</span>กลุ่มยา</button>
+        <button role="tab" aria-selected={activeView === "herbal"} className={activeView === "herbal" ? "active herbal-tab" : "herbal-tab"} onClick={() => changeView("herbal")}><span>03</span>บัญชียาหลักแห่งชาติด้านสมุนไพร</button>
       </div>
 
-      <section className={`hero-section ${activeView === "herbal" ? "herbal-hero" : ""}`}>
+      <section className={`hero-section ${activeView === "herbal" ? "herbal-hero" : activeView === "groups" ? "groups-hero" : ""}`}>
         <div className="hero-grid" aria-hidden="true" />
         <div className="hero-copy">
-          <p className="kicker">{activeView === "formulary" ? "BANGCHAK HOSPITAL · DRUG DIRECTORY" : "HERBAL ESSENTIAL MEDICINES · 2566"}</p>
-          <h1>{activeView === "formulary" ? <>ค้นให้เจอ<br /><em>ก่อนเลือกใช้</em></> : <>สมุนไพร<br /><em>ที่เรามี</em></>}</h1>
-          <p className="hero-lead">{activeView === "formulary" ? "ฐานข้อมูลกรอบบัญชียาที่อ่านง่าย ค้นเร็ว และย้อนกลับไปตรวจเอกสารต้นฉบับได้ทุกครั้ง" : "จับคู่ยาสมุนไพรของโรงพยาบาลกับบัญชียาหลักแห่งชาติด้านสมุนไพร พ.ศ. 2566 พร้อมข้อบ่งใช้ ขนาดใช้ และข้อควรระวังจากเอกสารต้นฉบับ"}</p>
-          <label className="hero-search" htmlFor="drug-search"><span className="search-glyph">⌕</span><input id="drug-search" value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder={activeView === "formulary" ? "พิมพ์ชื่อยา ความแรง หรือรูปแบบยา" : "ค้นหาชื่อสมุนไพร ข้อบ่งใช้ หรือรูปแบบยา"} autoComplete="off" />{query ? <button onClick={() => { setQuery(""); resetPage(); }} aria-label="ล้างคำค้น">×</button> : <kbd>⌘ K</kbd>}</label>
-          <div className="quick-links"><span>ค้นหายอดนิยม</span>{(activeView === "formulary" ? ["Paracetamol", "Amoxicillin", "Metformin"] : ["ฟ้าทะลายโจร", "พญายอ", "ขมิ้นชัน"]).map((term) => <button key={term} onClick={() => { setQuery(term); resetPage(); }}>{term}</button>)}</div>
+          <p className="kicker">{activeView === "formulary" ? "BANGCHAK HOSPITAL · DRUG DIRECTORY" : activeView === "groups" ? "THERAPEUTIC GROUPS · HOSPITAL FORMULARY" : "HERBAL ESSENTIAL MEDICINES · 2566"}</p>
+          <h1>{activeView === "formulary" ? <>ค้นให้เจอ<br /><em>ก่อนเลือกใช้</em></> : activeView === "groups" ? <>เลือกยา<br /><em>ตามการใช้</em></> : <>สมุนไพร<br /><em>ที่เรามี</em></>}</h1>
+          <p className="hero-lead">{activeView === "formulary" ? "ฐานข้อมูลกรอบบัญชียาที่อ่านง่าย ค้นเร็ว และย้อนกลับไปตรวจเอกสารต้นฉบับได้ทุกครั้ง" : activeView === "groups" ? "แยกรายการจากกรอบยาโรงพยาบาลเป็นกลุ่มการใช้ เช่น ยาคุมกำเนิด ยาเบาหวาน ยาปฏิชีวนะ ยาความดัน และกลุ่มสำคัญอื่น ๆ" : "จับคู่ยาสมุนไพรของโรงพยาบาลกับบัญชียาหลักแห่งชาติด้านสมุนไพร พ.ศ. 2566 พร้อมข้อบ่งใช้ ขนาดใช้ และข้อควรระวังจากเอกสารต้นฉบับ"}</p>
+          <label className="hero-search" htmlFor="drug-search"><span className="search-glyph">⌕</span><input id="drug-search" value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder={activeView === "formulary" ? "พิมพ์ชื่อยา ความแรง หรือรูปแบบยา" : activeView === "groups" ? "ค้นหาชื่อยา ชื่อสามัญ หรือกลุ่มยา" : "ค้นหาชื่อสมุนไพร ข้อบ่งใช้ หรือรูปแบบยา"} autoComplete="off" />{query ? <button onClick={() => { setQuery(""); resetPage(); }} aria-label="ล้างคำค้น">×</button> : <kbd>⌘ K</kbd>}</label>
+          <div className="quick-links">
+            <span>{activeView === "groups" ? "กลุ่มยอดนิยม" : "ค้นหายอดนิยม"}</span>
+            {activeView === "groups"
+              ? [["ยาคุมกำเนิด", "contraceptives"], ["ยาเบาหวาน", "diabetes"], ["ยาแก้แพ้", "allergy"]].map(([label, id]) => <button key={id} onClick={() => { setSelectedUseGroup(id); setQuery(""); resetPage(); }}>{label}</button>)
+              : (activeView === "formulary" ? ["Paracetamol", "Amoxicillin", "Metformin"] : ["ฟ้าทะลายโจร", "พญายอ", "ขมิ้นชัน"]).map((term) => <button key={term} onClick={() => { setQuery(term); resetPage(); }}>{term}</button>)}
+          </div>
         </div>
-        <aside className="hero-ledger" aria-label="สรุปข้อมูล"><p>{activeView === "formulary" ? "THE COLLECTION" : "HOSPITAL HERBAL SET"}</p><strong>{activeView === "formulary" ? (data?.meta.recordCount ?? 708).toLocaleString("th-TH") : herbalProfiles.length.toLocaleString("th-TH")}</strong><span>{activeView === "formulary" ? "รายการที่ค้นหาได้" : "รายการสมุนไพรของโรงพยาบาล"}</span><dl>{activeView === "formulary" ? <><div><dt>กลุ่มยา</dt><dd>{groups.length || 12}</dd></div><div><dt>รายการ NED</dt><dd>{nedCount || 33}</dd></div><div><dt>มีเกณฑ์ DUE</dt><dd>{dueCount || 25}</dd></div></> : <><div><dt>จับคู่ตรง</dt><dd>{herbalProfiles.length - herbalReviewCount}</dd></div><div><dt>ต้องทบทวนตำรับ</dt><dd>{herbalReviewCount}</dd></div><div><dt>บัญชีรายการยาเฉพาะ</dt><dd>{herbalSpecificCount}</dd></div></>}</dl><div className="ledger-mark"><span>{activeView === "formulary" ? "Rx" : "Herb"}</span><i /></div></aside>
+        <aside className="hero-ledger" aria-label="สรุปข้อมูล">
+          <p>{activeView === "formulary" ? "THE COLLECTION" : activeView === "groups" ? "THERAPEUTIC INDEX" : "HOSPITAL HERBAL SET"}</p>
+          <strong>{activeView === "formulary" ? (data?.meta.recordCount ?? 708).toLocaleString("th-TH") : activeView === "groups" ? useGroupStats.length.toLocaleString("th-TH") : herbalProfiles.length.toLocaleString("th-TH")}</strong>
+          <span>{activeView === "formulary" ? "รายการที่ค้นหาได้" : activeView === "groups" ? "กลุ่มการใช้ยาจากกรอบโรงพยาบาล" : "รายการสมุนไพรของโรงพยาบาล"}</span>
+          <dl>{activeView === "formulary" ? <><div><dt>กลุ่มเอกสาร</dt><dd>{groups.length || 12}</dd></div><div><dt>รายการ NED</dt><dd>{nedCount || 33}</dd></div><div><dt>มีเกณฑ์ DUE</dt><dd>{dueCount || 25}</dd></div></> : activeView === "groups" ? <><div><dt>รายการที่จัดกลุ่มแล้ว</dt><dd>{(drugs.length - unclassifiedCount).toLocaleString("th-TH")}</dd></div><div><dt>ยาคุมกำเนิด</dt><dd>{contraceptiveCount}</dd></div><div><dt>รอจัดกลุ่ม</dt><dd>{unclassifiedCount}</dd></div></> : <><div><dt>จับคู่ตรง</dt><dd>{herbalProfiles.length - herbalReviewCount}</dd></div><div><dt>ต้องทบทวนตำรับ</dt><dd>{herbalReviewCount}</dd></div><div><dt>บัญชีรายการยาเฉพาะ</dt><dd>{herbalSpecificCount}</dd></div></>}</dl>
+          <div className="ledger-mark"><span>{activeView === "formulary" ? "Rx" : activeView === "groups" ? "GRP" : "Herb"}</span><i /></div>
+        </aside>
       </section>
 
       {loadError && <div className="error-note">ไม่สามารถเปิดชุดข้อมูลยาได้ กรุณาตรวจสอบไฟล์ข้อมูลใน Repository</div>}
@@ -221,7 +270,61 @@ export default function Home() {
         </aside>
       </section>
 
-      </> : (
+      </> : activeView === "groups" ? (
+        <section className="use-group-directory" id="use-groups">
+          <header className="use-group-head">
+            <div>
+              <span>02 / THERAPEUTIC GROUPS</span>
+              <h2>กลุ่มการใช้ยา</h2>
+              <p>จัดกลุ่มจากชื่อยาและหมวดทางเภสัชวิทยาที่มีอยู่ในรายการกรอบยาโรงพยาบาล โดยยาแต่ละรายการอยู่ในกลุ่มหลักเพียงหนึ่งกลุ่มเพื่อให้ค้นหาได้ชัดเจน</p>
+            </div>
+            <strong>{useGroupStats.length}<small> กลุ่ม</small></strong>
+          </header>
+
+          <div className="use-group-grid">
+            <button className={`use-group-card all ${selectedUseGroup === "all" ? "active" : ""}`} onClick={() => { setSelectedUseGroup("all"); resetPage(); }}>
+              <span className="use-group-mark">ALL</span>
+              <strong>ยาทุกกลุ่ม</strong>
+              <p>แสดงรายการทั้งหมดจากกรอบยาโรงพยาบาล</p>
+              <small>{drugs.length.toLocaleString("th-TH")} รายการ</small>
+            </button>
+            {useGroupStats.map((group) => (
+              <button
+                className={`use-group-card ${selectedUseGroup === group.id ? "active" : ""}`}
+                key={group.id}
+                onClick={() => { setSelectedUseGroup(group.id); resetPage(); }}
+                style={{ "--accent": group.color } as React.CSSProperties}
+              >
+                <span className="use-group-mark">{group.mark}</span>
+                <strong>{group.name}</strong>
+                <p>{group.description}</p>
+                <small>{group.count.toLocaleString("th-TH")} รายการ</small>
+                <i>{group.samples.slice(0, 2).join(" · ")}</i>
+              </button>
+            ))}
+          </div>
+
+          <section className="group-results" id="group-results">
+            <div className="directory-head">
+              <div><span>03 / GROUP RESULTS</span><h2>{query ? `ผลการค้นหา “${query}”` : selectedUseGroupMeta?.name ?? "ยาทุกกลุ่ม"}</h2></div>
+              <strong>{useGroupDrugs.length.toLocaleString("th-TH")} <small>รายการ</small></strong>
+            </div>
+            {selectedUseGroupMeta && <div className="group-context"><span style={{ background: selectedUseGroupMeta.color }}>{selectedUseGroupMeta.mark}</span><p>{selectedUseGroupMeta.description}</p><button onClick={() => { setSelectedUseGroup("all"); resetPage(); }}>แสดงทุกกลุ่ม ↻</button></div>}
+            <div className="drug-table group-drug-table">
+              <div className="drug-table-head"><span>ชื่อยา / รูปแบบ</span><span>หมวดทางเภสัชวิทยา</span><span>สถานะ</span><span /></div>
+              {!data && !loadError && <div className="loading-lines"><i /><i /><i /><i /><i /></div>}
+              {useGroupDrugs.slice(0, visibleCount).map((drug) => {
+                const group = getDrugUseGroup(drug);
+                return <button className="drug-entry" key={drug.id} onClick={() => setSelectedDrug(drug)}><span className="entry-mark" style={{ color: group.color, borderColor: `${group.color}40` }}>{group.mark}</span><span className="entry-name"><strong>{drug.name}</strong><small>{[drug.dosageForm, drug.strength, drug.brand].filter(Boolean).join(" · ") || "ไม่ระบุรูปแบบและความแรง"}</small></span><span className="entry-group">{drug.thaiNdi?.drugClass || drug.drugClass || group.name}</span><span className={`status-chip ${drug.status === "พร้อมใช้" ? "ready" : drug.status === "มีเกณฑ์ DUE" ? "due" : drug.status === "จำกัดการใช้" ? "restricted" : "special"}`}><i />{drug.status}</span><span className="entry-arrow">↗</span></button>;
+              })}
+              {data && useGroupDrugs.length === 0 && <div className="empty-result"><span>⌕</span><h3>ยังไม่พบยาในกลุ่มนี้</h3><p>ลองล้างคำค้นหรือเลือกกลุ่มยาอื่น</p></div>}
+            </div>
+            {visibleCount < useGroupDrugs.length && <button className="more-button" onClick={() => setVisibleCount((count) => count + 24)}>แสดงอีก {Math.min(24, useGroupDrugs.length - visibleCount)} รายการ <span>↓</span></button>}
+          </section>
+
+          <p className="group-method-note"><strong>หมายเหตุการจัดกลุ่ม</strong> กลุ่มนี้จัดเพื่อช่วยค้นหา ไม่ใช้แทนการจำแนก ATC หรือบัญชียาหลักแห่งชาติ หากรายการใดยังไม่มีข้อมูลชัดเจนจะแสดงใน “อื่น ๆ / รอจัดกลุ่ม”</p>
+        </section>
+      ) : (
         <section className="herbal-directory" id="herbal-directory">
           <header className="herbal-directory-head">
             <div><span>02 / HERBAL DIRECTORY</span><h2>{query ? `ผลการค้นหา “${query}”` : "ยาสมุนไพรที่โรงพยาบาลมี"}</h2><p>เลือกแต่ละรายการเพื่อดูข้อบ่งใช้ ขนาดและวิธีใช้ ข้อควรระวัง และหน้าที่อ้างอิงในหนังสือ</p></div>
@@ -252,7 +355,7 @@ export default function Home() {
         </section>
       )}
 
-      <footer className="footer"><div><b>BCH</b><span>Bangchak Hospital Formulary</span></div><p>{activeView === "formulary" ? `ปีงบประมาณ 2569 · ข้อมูล ${data?.meta.recordCount ?? 708} รายการ` : `${HERBAL_SOURCE.title} · ยาโรงพยาบาล ${herbalProfiles.length} รายการ`}</p><a href="#top">กลับด้านบน ↑</a></footer>
+      <footer className="footer"><div><b>BCH</b><span>Bangchak Hospital Formulary</span></div><p>{activeView === "formulary" ? `ปีงบประมาณ 2569 · ข้อมูล ${data?.meta.recordCount ?? 708} รายการ` : activeView === "groups" ? `กลุ่มการใช้ยา ${useGroupStats.length} กลุ่ม · ข้อมูลจากกรอบยาโรงพยาบาล` : `${HERBAL_SOURCE.title} · ยาโรงพยาบาล ${herbalProfiles.length} รายการ`}</p><a href="#top">กลับด้านบน ↑</a></footer>
 
       {selectedDrug && (
         <div className="modal-backdrop" onMouseDown={() => setSelectedDrug(null)}>
